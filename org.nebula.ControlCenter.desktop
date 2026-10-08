@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Nebula Control Center
+Comment=Linux system monitor and control center
+Exec=nebula-control-center
+Icon=computer
+Terminal=false
+Categories=System;Utility;GTK;
+StartupNotify=true
