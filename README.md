@@ -6,7 +6,7 @@ Nebula Control Center brings system monitoring, diagnostics, and useful Linux co
 
 ## 🖼️ Preview
 
-![Nebula Control Center](assets/nebula-control-center-preview.png)
+![Nebula Control Center](assets/nebula-control-center-preview-v2.png)
 
 ## ✨ Features
 
