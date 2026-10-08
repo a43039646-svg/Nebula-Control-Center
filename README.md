@@ -1,4 +1,4 @@
-# Nebula Control Center v2.1.0
+# Nebula Control Center v2.1.1
 
 A native Linux control center written in C + GTK4.
 
@@ -133,3 +133,11 @@ The locale directory still supports 100+ languages. English is the fallback for 
 - Permissions
 - Command Console
 - Settings
+
+
+## v2.1.1
+
+- Added the official Nebula Control Center app icon.
+- Desktop entry now uses `Icon=nebula-control-center`.
+- `make install` installs the icon into the standard hicolor icon theme.
+- `make uninstall` removes the installed icon as well.

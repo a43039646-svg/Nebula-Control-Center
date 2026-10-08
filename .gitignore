@@ -5,3 +5,4 @@ build/
 dist/
 .cache/
 *.log
+nebula-control-center

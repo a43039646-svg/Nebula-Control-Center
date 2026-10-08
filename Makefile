@@ -21,12 +21,14 @@ clean:
 install: $(TARGET)
 	install -Dm755 $(TARGET) /usr/local/bin/$(TARGET)
 	install -Dm644 org.nebula.ControlCenter.desktop /usr/local/share/applications/org.nebula.ControlCenter.desktop
+	install -Dm644 nebula-control-center.png /usr/local/share/icons/hicolor/512x512/apps/nebula-control-center.png
 	install -d /usr/local/share/nebula-control-center/locales
 	install -Dm644 locales/*.lang /usr/local/share/nebula-control-center/locales/
 
 uninstall:
 	rm -f /usr/local/bin/$(TARGET)
 	rm -f /usr/local/share/applications/org.nebula.ControlCenter.desktop
+	rm -f /usr/local/share/icons/hicolor/512x512/apps/nebula-control-center.png
 	rm -rf /usr/local/share/nebula-control-center
 
 .PHONY: all clean install uninstall
