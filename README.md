@@ -4,6 +4,8 @@ A modern native Linux system control center built with **C + GTK4**.
 
 Nebula Control Center brings system monitoring, diagnostics, and useful Linux controls together in one desktop application.
 
+## 🖼️ Preview
+
 ![Nebula Control Center](assets/nebula-control-center-preview.png)
 
 ## ✨ Features
@@ -18,16 +20,12 @@ Nebula Control Center brings system monitoring, diagnostics, and useful Linux co
 - 🩺 **System Doctor** — quick checks for common Linux problems
 - 🚀 **Startup** — desktop autostart entries
 - 🎮 **Gaming Mode** — GameMode, MangoHud and power-profile checks
-- 🔐 **Permissions** — information about available system/admin interfaces
+- 🔐 **Permissions** — information about available system and administrator interfaces
 - 💻 **Command Console** — safe, predefined diagnostic commands
-- 🎨 **Themes & appearance** — distro-inspired accents and interface shapes
+- 🎨 **Themes & Appearance** — distro-inspired accents and interface shapes
 - 🌍 **Localization** — 100+ language slots with English fallback
 
-## 🖼️ Preview
-
-The screenshot above shows Nebula Control Center running on Linux Mint.
-
-## 🛠️ Built with
+## 🛠️ Built With
 
 - **C**
 - **GTK4**
@@ -41,7 +39,7 @@ Nebula Control Center is primarily developed and tested on **Linux Mint** and De
 
 Other Linux distributions may work when the required GTK4 libraries and system utilities are available.
 
-## 📦 Build from source
+## 📦 Build From Source
 
 ### Debian / Ubuntu / Linux Mint
 
@@ -63,7 +61,7 @@ Run:
 ./nebula-control-center
 ```
 
-Install system-wide:
+Install:
 
 ```bash
 sudo make install
@@ -77,9 +75,11 @@ Translations are stored separately in:
 locales/
 ```
 
-Nebula Control Center includes **100+ language slots**. Missing translations fall back to English.
+Nebula Control Center includes **100+ language slots**.
 
-Adding a translation does not require changing the C source code.
+When a translation is unavailable, the application falls back to English.
+
+Translations can be improved or added without changing the main C source code.
 
 ## 🎨 Appearance
 
@@ -107,7 +107,7 @@ Interface shapes:
 - Soft
 - Square
 
-## 📁 Project structure
+## 📁 Project Structure
 
 ```text
 src/
@@ -130,6 +130,9 @@ locales/
 
 icons/
 └── Nebula Control Center icons
+
+assets/
+└── nebula-control-center-preview.png
 ```
 
 ## 🚫 Plugins
@@ -138,19 +141,23 @@ The experimental plugin system was removed.
 
 Nebula Control Center **does not load or execute third-party plugins**.
 
-This keeps the application simpler and avoids introducing an extension API before a proper security model is defined.
+This keeps the application simpler and avoids introducing an extension system before a proper security model is defined.
 
-## 🚧 Project status
+## 🚧 Project Status
 
 **Current version: v2.1.1**
 
-Nebula Control Center is a **public preview** and is under active development.
+Nebula Control Center is currently a **public preview** and is under active development.
 
-Expect some distribution-specific differences, incomplete translations, and changes between releases.
+The core application is functional, but testing across different Linux distributions is still ongoing.
+
+Some features, translations, and distribution-specific integrations may change in future releases.
 
 Bug reports, testing results, translation improvements, and feature suggestions are welcome.
 
 ## 🤝 Contributing
+
+Contributions are welcome.
 
 You can help by:
 
@@ -158,12 +165,14 @@ You can help by:
 - reporting bugs;
 - improving translations;
 - improving documentation;
-- contributing code.
+- contributing code;
+- suggesting new features.
 
-For larger changes, open an issue first so the idea can be discussed.
+For larger changes, please open an issue first so the idea can be discussed.
 
 ## 📜 License
 
+Nebula Control Center is licensed under the **GNU General Public License v3.0 or later**.
 See [`LICENSE`](LICENSE).
 
 ## 🌌 Nebula Project
