@@ -7,6 +7,7 @@
 
 #include "system_info.h"
 #include "process_manager.h"
+#include <errno.h>
 #include "storage.h"
 #include "network.h"
 #include "services.h"
@@ -77,6 +78,8 @@ typedef struct {
 typedef struct {
     GtkWindow *dialog;
     pid_t pid;
+    GtkWidget *message_label;
+    AppState *state;
 } KillContext;
 
 typedef struct {
@@ -565,20 +568,48 @@ static void render_services(AppState *state)
     services_free_list(services);
 }
 
+static void render_processes(AppState *state);
+
+static gboolean refresh_processes_after_terminate(gpointer user_data)
+{
+    render_processes((AppState *)user_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean kill_dialog_close_request(
+    GtkWindow *window, gpointer user_data)
+{
+    (void)window;
+    g_free(user_data);
+    return FALSE;
+}
+
 static void kill_dialog_response(GtkButton *button, gpointer user_data)
 {
     (void)button;
     KillContext *ctx = user_data;
-    process_manager_terminate(ctx->pid);
+
+    if (process_manager_terminate(ctx->pid) != 0) {
+        int error_code = errno;
+        char *error_message = g_strdup_printf(
+            "Could not terminate PID %d: %s",
+            ctx->pid, g_strerror(error_code));
+
+        gtk_label_set_text(
+            GTK_LABEL(ctx->message_label), error_message);
+        g_free(error_message);
+        return;
+    }
+
+    g_timeout_add(500, refresh_processes_after_terminate, ctx->state);
     gtk_window_close(ctx->dialog);
-    g_free(ctx);
 }
 
 static void kill_dialog_cancel(GtkButton *button, gpointer user_data)
 {
     (void)button;
-    GtkWindow *dialog = user_data;
-    gtk_window_close(dialog);
+    KillContext *ctx = user_data;
+    gtk_window_close(ctx->dialog);
 }
 
 static void on_kill_clicked(GtkButton *button, gpointer user_data)
@@ -610,7 +641,8 @@ static void on_kill_clicked(GtkButton *button, gpointer user_data)
     gtk_window_set_child(GTK_WINDOW(dialog), box);
 
     char *message = g_strdup_printf("Terminate %s (PID %d)?\nThe process will receive SIGTERM.", name, pid);
-    gtk_box_append(GTK_BOX(box), label_left(message, "section-title"));
+    GtkWidget *message_widget = label_left(message, "section-title");
+    gtk_box_append(GTK_BOX(box), message_widget);
     g_free(message);
 
     GtkWidget *buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
@@ -624,12 +656,18 @@ static void on_kill_clicked(GtkButton *button, gpointer user_data)
     gtk_box_append(GTK_BOX(buttons), terminate);
     gtk_box_append(GTK_BOX(box), buttons);
 
-    g_signal_connect(cancel, "clicked", G_CALLBACK(kill_dialog_cancel), dialog);
-
     KillContext *ctx = g_new0(KillContext, 1);
     ctx->dialog = GTK_WINDOW(dialog);
     ctx->pid = pid;
-    g_signal_connect(terminate, "clicked", G_CALLBACK(kill_dialog_response), ctx);
+    ctx->message_label = message_widget;
+    ctx->state = state;
+
+    g_signal_connect(dialog, "close-request",
+                     G_CALLBACK(kill_dialog_close_request), ctx);
+    g_signal_connect(cancel, "clicked",
+                     G_CALLBACK(kill_dialog_cancel), ctx);
+    g_signal_connect(terminate, "clicked",
+                     G_CALLBACK(kill_dialog_response), ctx);
 
     gtk_window_present(GTK_WINDOW(dialog));
 }
