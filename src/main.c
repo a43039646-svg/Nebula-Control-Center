@@ -1,4 +1,6 @@
 #include <gtk/gtk.h>
+#include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -7,7 +9,6 @@
 
 #include "system_info.h"
 #include "process_manager.h"
-#include <errno.h>
 #include "storage.h"
 #include "network.h"
 #include "services.h"
@@ -17,7 +18,11 @@
 #include "gaming.h"
 #include "permissions.h"
 
-#define APP_VERSION "2.1.0"
+#define APP_VERSION "2.2.0"
+
+#ifndef NEBULA_HELPER_PATH
+#define NEBULA_HELPER_PATH "/usr/lib/nebula-control-center/nebula-process-terminator"
+#endif
 
 typedef enum {
     PAGE_OVERVIEW,
@@ -78,7 +83,12 @@ typedef struct {
 typedef struct {
     GtkWindow *dialog;
     pid_t pid;
+    pid_t caller_pid;
+    uint64_t start_time_ticks;
     GtkWidget *message_label;
+    GtkWidget *terminate_button;
+    GtkWidget *admin_button;
+    GtkWidget *cancel_button;
     AppState *state;
 } KillContext;
 
@@ -562,8 +572,14 @@ static void render_services(AppState *state)
         gtk_box_append(GTK_BOX(state->services_box), info_row(service->name, service->state));
     }
 
-    if (services->len == 0)
-        gtk_box_append(GTK_BOX(state->services_box), info_row("No running services found", "systemctl unavailable or none detected"));
+    if (services->len == 0) {
+        const char *manager = services_manager_name();
+        char *detail = manager
+            ? g_strdup_printf("No services reported by %s", manager)
+            : g_strdup("No supported service manager detected or service listing failed");
+        gtk_box_append(GTK_BOX(state->services_box), info_row("Service listing", detail));
+        g_free(detail);
+    }
 
     services_free_list(services);
 }
@@ -576,33 +592,149 @@ static gboolean refresh_processes_after_terminate(gpointer user_data)
     return G_SOURCE_REMOVE;
 }
 
-static gboolean kill_dialog_close_request(
-    GtkWindow *window, gpointer user_data)
+static gboolean kill_dialog_close_request(GtkWindow *window, gpointer user_data)
 {
     (void)window;
     g_free(user_data);
     return FALSE;
 }
 
+static void set_kill_message(KillContext *ctx, const char *message)
+{
+    gtk_label_set_text(GTK_LABEL(ctx->message_label), message ? message : "");
+}
+
+static void set_auth_controls(KillContext *ctx, gboolean enabled)
+{
+    gtk_widget_set_sensitive(ctx->terminate_button, enabled);
+    gtk_widget_set_sensitive(ctx->admin_button, enabled);
+    gtk_widget_set_sensitive(ctx->cancel_button, enabled);
+    gtk_window_set_deletable(ctx->dialog, enabled);
+}
+
+static void admin_terminate_done(GObject *source_object, GAsyncResult *result,
+                                 gpointer user_data)
+{
+    KillContext *ctx = user_data;
+    GSubprocess *process = G_SUBPROCESS(source_object);
+    gchar *stdout_text = NULL;
+    gchar *stderr_text = NULL;
+    GError *error = NULL;
+    gboolean communicated = g_subprocess_communicate_utf8_finish(
+        process, result, &stdout_text, &stderr_text, &error);
+    gboolean success = communicated && g_subprocess_get_successful(process);
+
+    if (success) {
+        AppState *state = ctx->state;
+        g_free(stdout_text);
+        g_free(stderr_text);
+        g_clear_error(&error);
+        g_object_unref(process);
+        g_timeout_add(500, refresh_processes_after_terminate, state);
+        gtk_window_close(ctx->dialog);
+        return;
+    }
+
+    const char *detail = NULL;
+    if (stderr_text && *g_strstrip(stderr_text))
+        detail = g_strstrip(stderr_text);
+    else if (error)
+        detail = error->message;
+    else
+        detail = "Authentication was cancelled or the process could not be terminated.";
+
+    gchar *message = g_strdup_printf("Administrator action failed: %s", detail);
+    set_kill_message(ctx, message);
+    g_free(message);
+    gtk_widget_set_sensitive(ctx->terminate_button, FALSE);
+    gtk_widget_set_sensitive(ctx->admin_button, TRUE);
+    gtk_widget_set_sensitive(ctx->cancel_button, TRUE);
+    gtk_window_set_deletable(ctx->dialog, TRUE);
+
+    g_free(stdout_text);
+    g_free(stderr_text);
+    g_clear_error(&error);
+    g_object_unref(process);
+}
+
+static void on_admin_terminate_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    KillContext *ctx = user_data;
+    gchar *pkexec_path = g_find_program_in_path("pkexec");
+
+    if (!pkexec_path || !g_file_test(NEBULA_HELPER_PATH, G_FILE_TEST_IS_EXECUTABLE)) {
+        set_kill_message(ctx,
+            "Administrator authentication is unavailable. Install pkexec and install NCC system-wide with 'sudo make install'.");
+        g_free(pkexec_path);
+        return;
+    }
+
+    gchar pid_text[32], start_text[32], caller_text[32];
+    g_snprintf(pid_text, sizeof(pid_text), "%ld", (long)ctx->pid);
+    g_snprintf(start_text, sizeof(start_text), "%llu",
+               (unsigned long long)ctx->start_time_ticks);
+    g_snprintf(caller_text, sizeof(caller_text), "%ld", (long)ctx->caller_pid);
+    const gchar *argv[] = {
+        pkexec_path, NEBULA_HELPER_PATH, "--terminate",
+        pid_text, start_text, caller_text, NULL
+    };
+
+    GError *error = NULL;
+    GSubprocess *process = g_subprocess_newv(
+        argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE,
+        &error);
+    g_free(pkexec_path);
+
+    if (!process) {
+        gchar *message = g_strdup_printf("Could not start administrator authentication: %s",
+                                         error ? error->message : "unknown error");
+        set_kill_message(ctx, message);
+        g_free(message);
+        g_clear_error(&error);
+        return;
+    }
+
+    set_auth_controls(ctx, FALSE);
+    set_kill_message(ctx, "Waiting for administrator authentication…");
+    g_subprocess_communicate_utf8_async(process, NULL, NULL,
+                                        admin_terminate_done, ctx);
+}
+
 static void kill_dialog_response(GtkButton *button, gpointer user_data)
 {
     (void)button;
     KillContext *ctx = user_data;
-
-    if (process_manager_terminate(ctx->pid) != 0) {
-        int error_code = errno;
-        char *error_message = g_strdup_printf(
-            "Could not terminate PID %d: %s",
-            ctx->pid, g_strerror(error_code));
-
-        gtk_label_set_text(
-            GTK_LABEL(ctx->message_label), error_message);
-        g_free(error_message);
+    if (process_manager_terminate(ctx->pid, ctx->start_time_ticks) == 0) {
+        AppState *state = ctx->state;
+        g_timeout_add(500, refresh_processes_after_terminate, state);
+        gtk_window_close(ctx->dialog);
         return;
     }
 
-    g_timeout_add(500, refresh_processes_after_terminate, ctx->state);
-    gtk_window_close(ctx->dialog);
+    int error_code = errno;
+    if (error_code == EPERM || error_code == EACCES) {
+        gchar *pkexec_path = g_find_program_in_path("pkexec");
+        gboolean helper_available = g_file_test(NEBULA_HELPER_PATH, G_FILE_TEST_IS_EXECUTABLE);
+        if (pkexec_path && helper_available) {
+            set_kill_message(ctx,
+                "Permission denied. Authenticate as an administrator to send SIGTERM to this process.");
+            gtk_widget_set_visible(ctx->admin_button, TRUE);
+            gtk_widget_set_sensitive(ctx->terminate_button, FALSE);
+        } else {
+            set_kill_message(ctx,
+                "Permission denied. Install pkexec and install NCC system-wide with 'sudo make install' to enable administrator authentication.");
+            gtk_widget_set_sensitive(ctx->terminate_button, FALSE);
+        }
+        g_free(pkexec_path);
+        return;
+    }
+
+    gchar *message = error_code == ESTALE
+        ? g_strdup_printf("PID %ld now belongs to a different process. Close this dialog and refresh the list.", (long)ctx->pid)
+        : g_strdup_printf("Could not terminate PID %ld: %s", (long)ctx->pid, g_strerror(error_code));
+    set_kill_message(ctx, message);
+    g_free(message);
 }
 
 static void kill_dialog_cancel(GtkButton *button, gpointer user_data)
@@ -616,22 +748,28 @@ static void on_kill_clicked(GtkButton *button, gpointer user_data)
 {
     AppState *state = user_data;
     pid_t pid = (pid_t)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "pid"));
+    guint64 *start_ticks = g_object_get_data(G_OBJECT(button), "start-time-ticks");
+    const char *stored_name = g_object_get_data(G_OBJECT(button), "process-name");
 
-    char path[256];
-    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
     char name[256] = "this process";
-    FILE *file = fopen(path, "r");
-    if (file) {
-        if (fgets(name, sizeof(name), file))
-            name[strcspn(name, "\r\n")] = '\0';
-        fclose(file);
+    if (stored_name && *stored_name) {
+        g_strlcpy(name, stored_name, sizeof(name));
+    } else {
+        char path[256];
+        snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+        FILE *file = fopen(path, "r");
+        if (file) {
+            if (fgets(name, sizeof(name), file))
+                name[strcspn(name, "\r\n")] = '\0';
+            fclose(file);
+        }
     }
 
     GtkWidget *dialog = gtk_window_new();
     gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(state->window));
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
     gtk_window_set_title(GTK_WINDOW(dialog), tr("Terminate process"));
-    gtk_window_set_default_size(GTK_WINDOW(dialog), 420, 170);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 460, 210);
 
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
     gtk_widget_set_margin_start(box, 22);
@@ -642,6 +780,7 @@ static void on_kill_clicked(GtkButton *button, gpointer user_data)
 
     char *message = g_strdup_printf("Terminate %s (PID %d)?\nThe process will receive SIGTERM.", name, pid);
     GtkWidget *message_widget = label_left(message, "section-title");
+    gtk_label_set_wrap(GTK_LABEL(message_widget), TRUE);
     gtk_box_append(GTK_BOX(box), message_widget);
     g_free(message);
 
@@ -650,24 +789,32 @@ static void on_kill_clicked(GtkButton *button, gpointer user_data)
 
     GtkWidget *cancel = gtk_button_new_with_label(tr("Cancel"));
     GtkWidget *terminate = gtk_button_new_with_label(tr("Terminate"));
+    GtkWidget *admin = gtk_button_new_with_label(tr("Authenticate & Terminate"));
     gtk_widget_add_css_class(terminate, "danger");
+    gtk_widget_add_css_class(admin, "danger");
+    gtk_widget_set_visible(admin, FALSE);
 
     gtk_box_append(GTK_BOX(buttons), cancel);
+    gtk_box_append(GTK_BOX(buttons), admin);
     gtk_box_append(GTK_BOX(buttons), terminate);
     gtk_box_append(GTK_BOX(box), buttons);
 
     KillContext *ctx = g_new0(KillContext, 1);
     ctx->dialog = GTK_WINDOW(dialog);
     ctx->pid = pid;
+    ctx->caller_pid = getpid();
+    ctx->start_time_ticks = start_ticks ? *start_ticks : 0;
     ctx->message_label = message_widget;
+    ctx->terminate_button = terminate;
+    ctx->admin_button = admin;
+    ctx->cancel_button = cancel;
     ctx->state = state;
 
     g_signal_connect(dialog, "close-request",
                      G_CALLBACK(kill_dialog_close_request), ctx);
-    g_signal_connect(cancel, "clicked",
-                     G_CALLBACK(kill_dialog_cancel), ctx);
-    g_signal_connect(terminate, "clicked",
-                     G_CALLBACK(kill_dialog_response), ctx);
+    g_signal_connect(cancel, "clicked", G_CALLBACK(kill_dialog_cancel), ctx);
+    g_signal_connect(admin, "clicked", G_CALLBACK(on_admin_terminate_clicked), ctx);
+    g_signal_connect(terminate, "clicked", G_CALLBACK(kill_dialog_response), ctx);
 
     gtk_window_present(GTK_WINDOW(dialog));
 }
@@ -731,6 +878,10 @@ static void render_processes(AppState *state)
         gtk_widget_add_css_class(end, "danger");
         gtk_widget_set_sensitive(end, process->pid > 1 && process->pid != getpid());
         g_object_set_data(G_OBJECT(end), "pid", GINT_TO_POINTER(process->pid));
+        guint64 *start_ticks = g_new(guint64, 1);
+        *start_ticks = process->start_time_ticks;
+        g_object_set_data_full(G_OBJECT(end), "start-time-ticks", start_ticks, g_free);
+        g_object_set_data_full(G_OBJECT(end), "process-name", g_strdup(process->name), g_free);
         g_signal_connect(end, "clicked", G_CALLBACK(on_kill_clicked), state);
         gtk_box_append(GTK_BOX(row), end);
 
@@ -816,6 +967,8 @@ static void render_gaming(AppState *state)
 
     GtkWidget *performance = gtk_button_new_with_label(tr("Performance"));
     GtkWidget *balanced = gtk_button_new_with_label(tr("Balanced"));
+    gtk_widget_set_sensitive(performance, gaming.powerprofiles);
+    gtk_widget_set_sensitive(balanced, gaming.powerprofiles);
 
     g_signal_connect(performance, "clicked", G_CALLBACK(gaming_performance_clicked), state);
 
@@ -841,33 +994,112 @@ static void render_permissions(AppState *state)
     permissions_free_list(checks);
 }
 
+static gchar *collect_runit_service_status(void)
+{
+    const char *bases[] = { "/var/service", "/etc/service", "/run/runit/service" };
+    GString *result = g_string_new("");
+    guint found = 0;
+
+    for (guint i = 0; i < G_N_ELEMENTS(bases); i++) {
+        DIR *dir = opendir(bases[i]);
+        if (!dir)
+            continue;
+
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_name[0] == '.' &&
+                (entry->d_name[1] == '\0' ||
+                 (entry->d_name[1] == '.' && entry->d_name[2] == '\0')))
+                continue;
+
+            gchar *service_path = g_build_filename(bases[i], entry->d_name, NULL);
+            if (!g_file_test(service_path, G_FILE_TEST_EXISTS)) {
+                g_free(service_path);
+                continue;
+            }
+
+            const gchar *argv[] = { "sv", "status", service_path, NULL };
+            gchar *out = NULL;
+            gchar *err = NULL;
+            gint status = 0;
+            GError *error = NULL;
+            gboolean ok = g_spawn_sync(NULL, (gchar **)argv, NULL,
+                G_SPAWN_SEARCH_PATH, NULL, NULL, &out, &err, &status, &error);
+
+            if (found > 0)
+                g_string_append_c(result, '\n');
+            if (ok && out && *out)
+                g_string_append(result, out);
+            else if (err && *err)
+                g_string_append(result, err);
+            else if (error)
+                g_string_append(result, error->message);
+            else
+                g_string_append_printf(result, "%s: status command returned no output", service_path);
+            found++;
+
+            g_free(service_path);
+            g_free(out);
+            g_free(err);
+            g_clear_error(&error);
+        }
+        closedir(dir);
+    }
+
+    if (found == 0)
+        g_string_append(result, "No runit service directories or readable services were found.");
+    return g_string_free(result, FALSE);
+}
+
 static void console_run_selected(GtkButton *button, gpointer user_data)
 {
     (void)button;
     AppState *state = user_data;
-
-    const char *commands[] = {
-        "uname -a",
-        "df -h /",
-        "ip -brief address",
-        "systemctl --failed --no-legend --plain"
-    };
-
+    const char *commands[] = { "uname -a", "df -h /", "ip -brief address" };
     guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(state->console_dropdown));
-    if (selected >= G_N_ELEMENTS(commands))
+    if (selected >= 4)
         return;
 
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->console_output));
     gchar *stdout_data = NULL;
     gchar *stderr_data = NULL;
     gint status = 0;
+    gboolean ok = FALSE;
 
-    gboolean ok = g_spawn_command_line_sync(
-        commands[selected], &stdout_data, &stderr_data, &status, NULL);
+    if (selected < G_N_ELEMENTS(commands)) {
+        ok = g_spawn_command_line_sync(commands[selected], &stdout_data,
+                                       &stderr_data, &status, NULL);
+    } else {
+        GPtrArray *service_probe = services_list_running();
+        const char *manager = services_manager_name();
 
-    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(state->console_output));
+        if (manager && strcmp(manager, "systemd") == 0) {
+            ok = g_spawn_command_line_sync(
+                "systemctl --failed --no-legend --plain", &stdout_data,
+                &stderr_data, &status, NULL);
+        } else if (manager && strcmp(manager, "OpenRC") == 0) {
+            ok = g_spawn_command_line_sync("rc-status --all", &stdout_data,
+                                           &stderr_data, &status, NULL);
+        } else if (manager && strcmp(manager, "runit") == 0) {
+            stdout_data = collect_runit_service_status();
+            ok = stdout_data != NULL;
+        } else {
+            services_free_list(service_probe);
+            gtk_text_buffer_set_text(buffer,
+                "No supported service manager detected (systemd, OpenRC or runit).", -1);
+            gtk_label_set_text(GTK_LABEL(state->status_label), tr("Command completed."));
+            return;
+        }
+        services_free_list(service_probe);
+    }
 
     if (!ok) {
-        gtk_text_buffer_set_text(buffer, tr("Failed to execute command."), -1);
+        gchar *message = g_strdup_printf("%s%s%s",
+            tr("Failed to execute command."),
+            stderr_data && *stderr_data ? "\n" : "",
+            stderr_data && *stderr_data ? stderr_data : "");
+        gtk_text_buffer_set_text(buffer, message, -1);
+        g_free(message);
     } else {
         GString *result = g_string_new(stdout_data ? stdout_data : "");
         if (stderr_data && *stderr_data) {
@@ -892,7 +1124,7 @@ static GtkWidget *build_console_page(AppState *state)
         tr("Kernel / OS"),
         tr("Root disk"),
         tr("Network addresses"),
-        tr("Failed services"),
+        tr("Service manager status"),
         NULL
     };
 

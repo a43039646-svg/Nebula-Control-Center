@@ -1,0 +1,74 @@
+name: Linux build and helper safety tests
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: debian
+          - distro: fedora
+          - distro: arch
+          - distro: alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test in ${{ matrix.distro }}
+        env:
+          DISTRO: ${{ matrix.distro }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$DISTRO" in
+            debian)
+              docker run --rm -v "$GITHUB_WORKSPACE:/source:ro" debian:stable-slim /bin/sh -ec '
+                apt-get update
+                apt-get install -y --no-install-recommends build-essential make pkg-config libgtk-4-dev pciutils
+                cp -a /source /tmp/ncc
+                rm -rf /tmp/ncc/.git
+                cd /tmp/ncc
+                make -j1
+                make test
+              '
+              ;;
+            fedora)
+              docker run --rm -v "$GITHUB_WORKSPACE:/source:ro" fedora:latest /bin/sh -ec '
+                dnf install -y gcc make pkgconf-pkg-config gtk4-devel pciutils
+                cp -a /source /tmp/ncc
+                rm -rf /tmp/ncc/.git
+                cd /tmp/ncc
+                make -j1
+                make test
+              '
+              ;;
+            arch)
+              docker run --rm -v "$GITHUB_WORKSPACE:/source:ro" archlinux:base-devel /bin/sh -ec '
+                pacman -Syu --noconfirm --needed base-devel pkgconf gtk4 pciutils
+                cp -a /source /tmp/ncc
+                rm -rf /tmp/ncc/.git
+                cd /tmp/ncc
+                make -j1
+                make test
+              '
+              ;;
+            alpine)
+              docker run --rm -v "$GITHUB_WORKSPACE:/source:ro" alpine:latest /bin/sh -ec '
+                apk add --no-cache build-base pkgconf gtk4.0-dev pciutils
+                cp -a /source /tmp/ncc
+                rm -rf /tmp/ncc/.git
+                cd /tmp/ncc
+                make -j1
+                make test
+              '
+              ;;
+            *)
+              echo "Unsupported matrix entry: $DISTRO" >&2
+              exit 2
+              ;;
+          esac

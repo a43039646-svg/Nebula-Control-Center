@@ -9,6 +9,7 @@ typedef struct {
 } ServiceInfo;
 
 GPtrArray *services_list_running(void);
+const char *services_manager_name(void);
 void services_free_list(GPtrArray *list);
 
 #endif

@@ -1,8 +1,4 @@
 *.o
-*.a
-*.so
-build/
-dist/
-.cache/
-*.log
-nebula-control-center
+/nebula-control-center
+/nebula-process-terminator
+/build/

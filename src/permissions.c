@@ -43,18 +43,28 @@ GPtrArray *permissions_check(void)
     gchar *sudo = g_find_program_in_path("sudo");
     g_ptr_array_add(checks, new_check(
         i18n_get("Admin helper"),
-        pkexec ? "pkexec" : (sudo ? "sudo" : i18n_get("NONE")),
-        pkexec ? i18n_get("PolicyKit helper is available.") :
-        (sudo ? i18n_get("sudo is available.") : i18n_get("No privilege escalation helper detected."))
+        pkexec ? "pkexec" : (sudo ? "sudo only" : i18n_get("NONE")),
+        pkexec ? i18n_get("PolicyKit authentication is available.") :
+        (sudo ? "sudo is installed, but protected-process authentication requires pkexec." :
+                "pkexec is not installed; protected-process authentication is unavailable.")
     ));
     g_free(pkexec);
     g_free(sudo);
 
+    gchar *systemctl = g_find_program_in_path("systemctl");
+    gchar *rc_status = g_find_program_in_path("rc-status");
+    gchar *sv = g_find_program_in_path("sv");
+    const char *service_manager = systemctl ? "systemd" :
+        (rc_status ? "OpenRC" : (sv ? "runit" : NULL));
     g_ptr_array_add(checks, new_check(
-        i18n_get("systemd control"),
-        g_find_program_in_path("systemctl") ? "OK" : i18n_get("NO"),
-        i18n_get("Service control depends on systemctl.")
+        i18n_get("Service manager"),
+        service_manager ? service_manager : i18n_get("NONE"),
+        service_manager ? i18n_get("A supported service manager was detected.") :
+                          i18n_get("systemd, OpenRC or runit tools were not detected.")
     ));
+    g_free(systemctl);
+    g_free(rc_status);
+    g_free(sv);
 
     return checks;
 }

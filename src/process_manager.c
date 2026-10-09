@@ -65,18 +65,51 @@ static gboolean read_process(pid_t pid, ProcessInfo *out, uint64_t total_ticks_n
     char state = 0;
     unsigned long long utime = 0;
     unsigned long long stime = 0;
+    unsigned long long start_ticks = 0;
     long rss_pages = 0;
-    char *fields = close + 2; /* skip ") " -> field 3 starts here */
+    gboolean got_state = FALSE, got_utime = FALSE, got_stime = FALSE;
+    gboolean got_start = FALSE, got_rss = FALSE;
+    char *fields = close + 2; /* field 3 starts after the closing parenthesis */
+    char *saveptr = NULL;
+    char *token = strtok_r(fields, " ", &saveptr);
+    int field_number = 3;
 
-    /* Fields 4..13 are skipped, then 14=utime, 15=stime, 16..23 skipped, 24=rss. */
-    if (sscanf(fields,
-               "%c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu %*d %*d %*d %*d %*d %*d %*d %*d %ld",
-               &state, &utime, &stime, &rss_pages) != 4) {
-        return FALSE;
+    /* Parse Linux /proc/PID/stat by field number; comm itself may contain spaces. */
+    while (token) {
+        switch (field_number) {
+        case 3:
+            state = token[0];
+            got_state = TRUE;
+            break;
+        case 14:
+            utime = strtoull(token, NULL, 10);
+            got_utime = TRUE;
+            break;
+        case 15:
+            stime = strtoull(token, NULL, 10);
+            got_stime = TRUE;
+            break;
+        case 22:
+            start_ticks = strtoull(token, NULL, 10);
+            got_start = TRUE;
+            break;
+        case 24:
+            rss_pages = strtol(token, NULL, 10);
+            got_rss = TRUE;
+            break;
+        default:
+            break;
+        }
+        ++field_number;
+        token = strtok_r(NULL, " ", &saveptr);
     }
+
+    if (!got_state || !got_utime || !got_stime || !got_start || !got_rss)
+        return FALSE;
 
     out->pid = pid;
     out->state = state;
+    out->start_time_ticks = (uint64_t)start_ticks;
     out->memory_mb = (uint64_t)((rss_pages > 0 ? rss_pages : 0) * (long)getpagesize()) / (1024ULL * 1024ULL);
 
     uint64_t ticks = (uint64_t)utime + (uint64_t)stime;
@@ -150,12 +183,67 @@ GPtrArray *process_manager_list(void)
     return list;
 }
 
-int process_manager_terminate(pid_t pid)
+static int read_proc_start_time(pid_t pid, uint64_t *start_time_ticks)
+{
+    char path[64];
+    char line[4096];
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return -1;
+    if (!fgets(line, sizeof(line), file)) {
+        int saved_errno = errno ? errno : EIO;
+        fclose(file);
+        errno = saved_errno;
+        return -1;
+    }
+    fclose(file);
+
+    char *close = strrchr(line, ')');
+    if (!close || close[1] != ' ') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    char *saveptr = NULL;
+    char *token = strtok_r(close + 2, " ", &saveptr);
+    int field_number = 3;
+    while (token) {
+        if (field_number == 22) {
+            char *end = NULL;
+            errno = 0;
+            unsigned long long value = strtoull(token, &end, 10);
+            if (errno || end == token || (*end && *end != '\n')) {
+                errno = EINVAL;
+                return -1;
+            }
+            *start_time_ticks = (uint64_t)value;
+            return 0;
+        }
+        ++field_number;
+        token = strtok_r(NULL, " ", &saveptr);
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
+int process_manager_terminate(pid_t pid, uint64_t expected_start_time_ticks)
 {
     if (pid <= 1 || pid == getpid()) {
         errno = EPERM;
         return -1;
     }
+
+    uint64_t actual_start_time_ticks = 0;
+    if (read_proc_start_time(pid, &actual_start_time_ticks) != 0)
+        return -1;
+    if (expected_start_time_ticks != 0 && actual_start_time_ticks != expected_start_time_ticks) {
+        errno = ESTALE;
+        return -1;
+    }
+
     return kill(pid, SIGTERM);
 }
 

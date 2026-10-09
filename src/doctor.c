@@ -33,7 +33,7 @@ static int failed_service_count(void)
     gint status = 0;
     if (!g_spawn_command_line_sync(
             "systemctl --failed --no-legend --plain",
-            &stdout_data, &stderr_data, &status, NULL)) {
+            &stdout_data, &stderr_data, &status, NULL) || status != 0) {
         g_free(stdout_data);
         g_free(stderr_data);
         return -1;
@@ -84,7 +84,11 @@ GPtrArray *doctor_run(void)
         command_exists("apt") ? "apt" :
         command_exists("pacman") ? "pacman" :
         command_exists("dnf") ? "dnf" :
+        command_exists("yum") ? "yum" :
         command_exists("zypper") ? "zypper" :
+        command_exists("xbps-install") ? "xbps-install" :
+        command_exists("emerge") ? "emerge" :
+        command_exists("apk") ? "apk" :
         NULL;
 
     g_ptr_array_add(checks, check_new(
@@ -94,19 +98,37 @@ GPtrArray *doctor_run(void)
     ));
 
     int failed = failed_service_count();
-    if (failed < 0) {
-        g_ptr_array_add(checks, check_new(
-            i18n_get("systemd services"),
-            "WARN",
-            i18n_get("systemctl is unavailable.")
-        ));
-    } else {
+    if (failed >= 0) {
         char detail[128];
         snprintf(detail, sizeof detail, i18n_get("%d failed service(s) reported by systemd."), failed);
         g_ptr_array_add(checks, check_new(
             i18n_get("systemd services"),
             failed == 0 ? i18n_get("OK") : "WARN",
             detail
+        ));
+    } else if (command_exists("rc-status")) {
+        gchar *out = NULL;
+        gint exit_status = 0;
+        gboolean ran = g_spawn_command_line_sync("rc-status --all", &out, NULL, &exit_status, NULL);
+        gboolean ok = ran && exit_status == 0;
+        g_ptr_array_add(checks, check_new(
+            i18n_get("OpenRC services"),
+            ok ? i18n_get("OK") : "WARN",
+            ok ? "OpenRC status is available; see Services for individual entries." :
+                 "OpenRC was detected, but rc-status could not report service status."
+        ));
+        g_free(out);
+    } else if (command_exists("sv")) {
+        g_ptr_array_add(checks, check_new(
+            i18n_get("runit services"),
+            i18n_get("OK"),
+            "runit was detected; see Services for individual service status."
+        ));
+    } else {
+        g_ptr_array_add(checks, check_new(
+            i18n_get("Service manager"),
+            "WARN",
+            "No supported service manager (systemd, OpenRC or runit) was detected."
         ));
     }
 
@@ -117,10 +139,10 @@ GPtrArray *doctor_run(void)
     ));
 
     g_ptr_array_add(checks, check_new(
-        i18n_get("Admin helper"),
-        (command_exists("pkexec") || command_exists("sudo")) ? i18n_get("OK") : "WARN",
-        command_exists("pkexec") ? i18n_get("pkexec is available.") :
-        (command_exists("sudo") ? i18n_get("sudo is available.") : i18n_get("No admin helper detected."))
+        i18n_get("Administrator process authentication"),
+        command_exists("pkexec") ? i18n_get("OK") : "WARN",
+        command_exists("pkexec") ? "pkexec is available." :
+            "pkexec is required for authenticated termination of protected processes."
     ));
 
     return checks;
