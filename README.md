@@ -2,16 +2,16 @@
 
 **A native Linux system control center built with C and GTK4.**
 
-Nebula Control Center (NCC) brings system monitoring, diagnostics, process management and common Linux controls into one desktop application.
+Nebula Control Center (NCC) combines system monitoring, diagnostics, process management and common Linux controls in one desktop application.
 
-> **Version 2.2.0 — public preview.** NCC targets multiple Linux distributions and builds from source. It is not a universal binary, and compatibility with every distribution, desktop environment or kernel is not guaranteed.
+> **Version 2.2.0 — public preview.** NCC is built from source for the target Linux distribution. It is not a universal binary, and compatibility with every distribution, desktop environment, kernel, device or release is not guaranteed.
 
 ## Features
 
 - **Overview** — CPU, memory, GPU information when discoverable, storage, network, battery and uptime
-- **Processes** — inspect resource use and request process termination
-- **Hardware** — CPU, GPU, kernel, temperatures and other details exposed by the system
-- **Services** — service information for systemd, OpenRC or runit when their tools are available
+- **Processes** — inspect process resource use and request process termination
+- **Hardware** — CPU, GPU, kernel, temperatures and other information exposed by the system
+- **Services** — service information for systemd, OpenRC or runit when the relevant tools are available
 - **Storage** — mounted filesystems and disk usage
 - **Network** — interfaces, addresses and traffic counters
 - **Power** — battery and system-load information
@@ -19,7 +19,7 @@ Nebula Control Center (NCC) brings system monitoring, diagnostics, process manag
 - **Startup** — desktop autostart entries
 - **Gaming Mode** — detects GameMode, MangoHud and `powerprofilesctl`; available actions depend on system support
 - **Permissions** — reports available system and authentication interfaces
-- **Command Console** — predefined read-only diagnostics; it does not run arbitrary commands typed by the user
+- **Command Console** — predefined read-only diagnostics; arbitrary user-entered shell commands are not executed
 - **Themes & Appearance** — distro-inspired accent themes and interface shapes
 - **Localization** — external language files with an English fallback
 
@@ -27,13 +27,13 @@ The experimental third-party plugin system has been removed. NCC does not load o
 
 ## Linux compatibility
 
-NCC is designed for **Linux desktop systems with GTK4**. It uses standard C, GTK4 and Linux interfaces such as `/proc` and `/sys`. It can be built locally against the libraries available on the target distribution.
+NCC targets Linux desktop systems that provide GTK4 and standard Linux interfaces such as `/proc` and `/sys`. Compile it on the target distribution so it links against the libraries available on that system.
 
-There is no single binary that is guaranteed to work everywhere. Distribution releases differ in library versions, graphics backends, service managers, authentication agents, filesystem layout and kernel features.
+Linux distributions differ in GTK versions, graphics backends, service managers, authentication agents, filesystem layout and kernel features. A successful build on one distribution does not guarantee identical functionality on another.
 
 ### Automated build targets
 
-The repository's GitHub Actions workflow is configured to compile and run the focused helper safety tests in containers based on:
+GitHub Actions is configured to build the application and run focused privileged-helper safety tests in container images for these targets:
 
 | CI target | Package family |
 | --- | --- |
@@ -42,13 +42,13 @@ The repository's GitHub Actions workflow is configured to compile and run the fo
 | Arch Linux | pacman packages |
 | Alpine Linux | APK packages |
 
-A CI target is a build check, not a guarantee for every desktop session, hardware configuration or release of that distribution. Check the repository's **Actions** tab for the current run results before treating a target as verified.
+Check the repository's **Actions** tab for the latest results. These checks do not cover every release, desktop environment, hardware configuration or kernel.
 
-### Dependency helper support
+### Supported dependency-helper families
 
-`install-deps.sh` recognizes these package-manager families and offers to install the build dependencies:
+`install-deps.sh` recognizes the package managers below and asks for confirmation before installing the build dependencies:
 
-| Distribution family | Package manager | Status in dependency helper |
+| Distribution family | Package manager | Dependency helper |
 | --- | --- | --- |
 | Debian, Ubuntu, Linux Mint and derivatives | APT | Recognized |
 | Fedora and derivatives | DNF | Recognized |
@@ -57,9 +57,9 @@ A CI target is a build check, not a guarantee for every desktop session, hardwar
 | Void Linux | XBPS | Recognized |
 | Gentoo | Portage | Recognized |
 | Alpine Linux | APK | Recognized |
-| Other Linux distributions | Varies | Install dependencies manually |
+| Other distributions | Varies | Install dependencies manually |
 
-“Recognized” means the helper knows a package-manager command; it does not mean that distribution has passed CI. Windows, macOS and BSD are not supported targets.
+“Recognized” means that the helper knows the package-manager command; it does **not** mean that distribution has passed CI. Windows, macOS and BSD are not supported targets.
 
 ## Build from source
 
@@ -70,27 +70,33 @@ git clone https://github.com/a43039646-svg/Nebula-Control-Center.git
 cd Nebula-Control-Center
 ```
 
-### 2. Preview or install build dependencies
+### 2. Preview or install dependencies
 
-The build needs a C compiler, `make`, `pkg-config`/`pkgconf`, GTK4 development files and (optionally) `pciutils` for extra GPU information.
+Required build dependencies:
 
-First preview what the helper would run:
+- a C compiler (`gcc` or compatible)
+- `make`
+- `pkg-config` or `pkgconf` providing the `pkg-config` command
+- GTK4 development headers and libraries
+- `pciutils` (optional; provides `lspci` for additional GPU information)
+
+Preview the dependency command first; this does not install packages:
 
 ```bash
 ./install-deps.sh --dry-run
 ```
 
-Review the command. To let the helper ask for confirmation and install the recognized dependencies, run:
+To let the helper ask for confirmation and install the recognized dependencies:
 
 ```bash
 ./install-deps.sh
 ```
 
-The helper does not request a general system upgrade and does not automatically refresh APT's package index. If a package cannot be found, refresh your distribution's package metadata using its normal procedure, then retry. You may also install the packages manually using the examples below.
+The helper does not request a general system upgrade and does not automatically refresh APT's package index. If packages cannot be found, refresh your distribution's package metadata using its normal procedure, then retry. You can also install dependencies manually using the examples below.
 
 ### Package examples
 
-These are build-dependency examples for common package managers. Package names can vary by distribution release and enabled repositories.
+Package names can vary between releases and enabled repositories. These commands install build dependencies only.
 
 **Debian / Ubuntu / Linux Mint**
 
@@ -128,7 +134,7 @@ sudo xbps-install -S gcc make pkgconf gtk4-devel pciutils
 sudo emerge --ask dev-util/pkgconf gui-libs/gtk:4 sys-devel/gcc sys-devel/make sys-apps/pciutils
 ```
 
-Follow Gentoo's usual Portage workflow and review any USE-flag or configuration prompts before confirming.
+Follow Gentoo's normal Portage workflow and review configuration or USE-flag prompts before confirming.
 
 **Alpine Linux**
 
@@ -136,11 +142,11 @@ Follow Gentoo's usual Portage workflow and review any USE-flag or configuration 
 sudo apk add build-base pkgconf gtk4.0-dev pciutils
 ```
 
-For another distribution, install its equivalent compiler, `make`, `pkg-config`/`pkgconf`, and GTK4 development packages. `pciutils` is optional.
+For another distribution, install its equivalent compiler, `make`, `pkg-config`/`pkgconf` and GTK4 development package. `pciutils` is optional.
 
 ### 3. Build, test and run
 
-To reduce CPU contention on a lower-powered machine, compile one job at a time:
+To limit simultaneous compiler jobs on lower-powered machines:
 
 ```bash
 nice -n 10 make -j1
@@ -148,17 +154,19 @@ make test
 ./nebula-control-center
 ```
 
-If `make` reports that GTK4 development files are missing, check that this succeeds:
+The test target builds/runs the focused privileged-helper test script. It checks invalid input, mismatched process identity and sending `SIGTERM` to a temporary test process; it is not a substitute for reviewing CI results.
+
+If `make` reports that GTK4 development files are missing, check:
 
 ```bash
 pkg-config --modversion gtk4
 ```
 
-The helper safety test checks invalid input, mismatched process identity and a normal signal to a temporary test process. Do not use the test as a substitute for reviewing CI results.
+If that command fails, install the GTK4 development package for your distribution and try again.
 
 ## Optional system-wide installation
 
-You can run NCC from the build directory without installing it. In that mode, administrator-authenticated process termination is not available unless the privileged helper is installed at its configured system path.
+You can run NCC directly from the build directory without installing it. In that mode, authenticated termination of protected processes is unavailable unless the privileged helper is installed at the configured system path.
 
 To install system-wide:
 
@@ -166,17 +174,18 @@ To install system-wide:
 sudo make install
 ```
 
-The default Makefile paths are FHS-style locations:
+With the default Makefile settings, installation places files at:
 
 - Application: `/usr/local/bin/nebula-control-center`
 - Privileged helper: `/usr/lib/nebula-control-center/nebula-process-terminator`
 - Language files: `/usr/local/share/nebula-control-center/locales/`
-- Desktop entry: `/usr/local/share/applications/`
+- Desktop entry: `/usr/local/share/applications/org.nebula.ControlCenter.desktop`
+- Application icon: `/usr/local/share/icons/hicolor/512x512/apps/nebula-control-center.png`
 - polkit action: `/usr/share/polkit-1/actions/`
 
-These defaults are suitable for many conventional Linux distributions. Systems with a different filesystem layout may need Makefile path overrides or packaging work; do not assume the default install paths are correct for every immutable or non-FHS distribution.
+These paths are conventional defaults, not a guarantee for every immutable or non-FHS distribution. Such systems may need path overrides or native packaging work.
 
-To uninstall an installation made with the same prefix and paths, return to the source directory and run:
+To uninstall an installation made using the same prefix and paths, run from the source directory:
 
 ```bash
 sudo make uninstall
@@ -186,20 +195,22 @@ Use the same Makefile path overrides during uninstall if you changed them during
 
 ## Process-termination security and limitations
 
-Normal same-user termination follows the permissions enforced by Linux. Terminating protected processes requires `pkexec` and an active graphical polkit authentication agent installed by the desktop environment; the application must not be run as root.
+Normal same-user process termination follows the permissions enforced by Linux. Terminating protected processes requires `pkexec` and an active graphical polkit authentication agent provided by the desktop environment. **Do not run the entire GUI as root.** The application does not read or store the administrator password.
 
-The privileged helper uses Linux pidfd system calls when the build headers expose them, helping it avoid PID-reuse races. This normally requires Linux kernel 5.3 or newer and suitable system-call definitions in the development headers. If pidfd support is unavailable, the helper refuses the authenticated termination request rather than falling back to PID-only signaling.
+The privileged helper uses Linux pidfd system calls when the build headers expose them, which helps avoid PID-reuse races. This normally requires Linux kernel 5.3 or newer and suitable system-call definitions in the development headers. If pidfd support is unavailable, the helper refuses the authenticated termination request rather than falling back to PID-only signaling.
 
-The helper sends `SIGTERM`; it does not promise that a process will exit immediately or that every process can be terminated. System services and protected processes may require their own management tools.
+The helper sends `SIGTERM`; it does not guarantee that a process exits immediately or that every process can be terminated. System services may need to be managed through their service manager.
 
 ## Optional integrations and troubleshooting
 
-- **Services not listed:** NCC detects service managers/tools that are installed and accessible. Results differ between systemd, OpenRC, runit and minimal environments.
-- **Administrator termination unavailable:** check that `pkexec` and your desktop's polkit authentication agent are installed. The helper is only added to its configured system path by system-wide installation.
-- **Missing GPU details:** install `pciutils` if available and remember that hardware/driver information depends on the machine and permissions.
-- **Power-profile actions unavailable:** `powerprofilesctl`, compatible hardware and an applicable power profile are required. NCC should not report a mode change as successful if the underlying system has not changed.
-- **Build fails on a new distro version:** check `pkg-config --modversion gtk4`, confirm the GTK4 development package is installed, and open an issue with the distribution and release, desktop environment, kernel version and relevant error output.
-- **CI failures:** consult the repository's GitHub Actions run; a local successful build on one distribution does not establish portability everywhere.
+- **Services are missing:** NCC detects service managers and commands available on the system. Results differ between systemd, OpenRC, runit and minimal environments.
+- **Administrator termination is unavailable:** check that `pkexec` and your desktop's polkit authentication agent are installed. The privileged helper is placed in its configured system path by `sudo make install`.
+- **GPU details are missing:** install `pciutils` if available. Hardware and driver details vary with devices, drivers, permissions and virtualized environments.
+- **Power-profile controls are unavailable:** `powerprofilesctl`, a compatible profile and supported hardware may be required.
+- **Build fails on a new distro release:** check `pkg-config --modversion gtk4`, verify the GTK4 development package is installed, and report the distribution/release and relevant error output.
+- **CI fails:** review the corresponding GitHub Actions run. A successful build on one distro does not prove portability to all Linux environments.
+
+When reporting a bug, include the distribution and release, desktop environment, kernel version, whether NCC was run from the build directory or installed system-wide, and the relevant error output. Do not include passwords, access tokens or other secrets in logs.
 
 ## Project layout
 
@@ -208,8 +219,8 @@ src/             C sources and headers
 locales/         translations
 icons/           application icon sizes
 .github/         automated build workflow
-tests/           focused safety tests
-data/            polkit policy template
+tests/           focused helper safety tests
+data/            polkit action template
 Makefile         build, install and uninstall rules
 install-deps.sh  package-manager-aware dependency helper
 CHANGELOG.md     version history
@@ -217,9 +228,7 @@ CHANGELOG.md     version history
 
 ## Development status
 
-**Version 2.2.0 — cross-distribution preview.** The project is under active development. The automated matrix checks selected distribution container images; it does not cover every distribution, desktop environment, kernel or hardware configuration. Bug reports and contributions are welcome.
-
-When reporting an issue, include your distribution and release, desktop environment, kernel version, whether you built from source or installed system-wide, and the relevant error output. Do not include access tokens, passwords or other secrets in logs.
+**Version 2.2.0 — cross-distribution public preview.** NCC is under active development. Automated builds cover selected container images; they do not cover every distribution, desktop environment, kernel or hardware configuration. Bug reports and contributions are welcome.
 
 ## License
 
