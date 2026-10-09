@@ -52,7 +52,7 @@ Check the repository's **Actions** tab for the latest results. These checks do n
 | --- | --- | --- |
 | Debian, Ubuntu, Linux Mint and derivatives | APT | Recognized |
 | Fedora and derivatives | DNF | Recognized |
-| Arch Linux, EndeavourOS and derivatives | pacman | Recognized |
+| Arch Linux and derivatives | pacman | Recognized |
 | openSUSE | Zypper | Recognized |
 | Void Linux | XBPS | Recognized |
 | Gentoo | Portage | Recognized |
@@ -110,7 +110,7 @@ sudo apt-get install build-essential make pkg-config libgtk-4-dev pciutils
 sudo dnf install gcc make pkgconf-pkg-config gtk4-devel pciutils
 ```
 
-**Arch Linux / EndeavourOS**
+**Arch Linux**
 
 ```bash
 sudo pacman -S --needed base-devel pkgconf gtk4 pciutils
