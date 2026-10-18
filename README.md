@@ -11,7 +11,7 @@ Nebula Control Center (NCC) combines system monitoring, diagnostics, process man
 - **Overview** — CPU, memory, GPU information when discoverable, storage, network, battery and uptime
 - **Processes** — inspect process resource use and request process termination
 - **Hardware** — CPU, GPU, kernel, temperatures and other information exposed by the system
-- **Services** — service information for systemd, OpenRC or runit when the relevant tools are available
+- **Services** — lists running systemd services when `systemctl` is available
 - **Storage** — mounted filesystems and disk usage
 - **Network** — interfaces, addresses and traffic counters
 - **Power** — battery and system-load information
@@ -31,18 +31,7 @@ NCC targets Linux desktop systems that provide GTK4 and standard Linux interface
 
 Linux distributions differ in GTK versions, graphics backends, service managers, authentication agents, filesystem layout and kernel features. A successful build on one distribution does not guarantee identical functionality on another.
 
-### Automated build targets
-
-GitHub Actions is configured to build the application and run focused privileged-helper safety tests in container images for these targets:
-
-| CI target | Package family |
-| --- | --- |
-| Debian stable | APT / Debian packages |
-| Fedora | DNF / RPM packages |
-| Arch Linux | pacman packages |
-| Alpine Linux | APK packages |
-
-Check the repository's **Actions** tab for the latest results. These checks do not cover every release, desktop environment, hardware configuration or kernel.
+This source tree does not include a CI workflow. Build it locally on the target distribution; a successful build does not guarantee identical functionality on every desktop, hardware configuration or kernel.
 
 ### Supported dependency-helper families
 
@@ -144,17 +133,16 @@ sudo apk add build-base pkgconf gtk4.0-dev pciutils
 
 For another distribution, install its equivalent compiler, `make`, `pkg-config`/`pkgconf` and GTK4 development package. `pciutils` is optional.
 
-### 3. Build, test and run
+### 3. Build and run
 
 To limit simultaneous compiler jobs on lower-powered machines:
 
 ```bash
 nice -n 10 make -j1
-make test
 ./nebula-control-center
 ```
 
-The test target builds/runs the focused privileged-helper test script. It checks invalid input, mismatched process identity and sending `SIGTERM` to a temporary test process; it is not a substitute for reviewing CI results.
+The current Makefile has no test target.
 
 If `make` reports that GTK4 development files are missing, check:
 
@@ -166,7 +154,7 @@ If that command fails, install the GTK4 development package for your distributio
 
 ## Optional system-wide installation
 
-You can run NCC directly from the build directory without installing it. In that mode, authenticated termination of protected processes is unavailable unless the privileged helper is installed at the configured system path.
+You can run NCC directly from the build directory without installing it.
 
 To install system-wide:
 
@@ -177,11 +165,9 @@ sudo make install
 With the default Makefile settings, installation places files at:
 
 - Application: `/usr/local/bin/nebula-control-center`
-- Privileged helper: `/usr/lib/nebula-control-center/nebula-process-terminator`
 - Language files: `/usr/local/share/nebula-control-center/locales/`
 - Desktop entry: `/usr/local/share/applications/org.nebula.ControlCenter.desktop`
 - Application icon: `/usr/local/share/icons/hicolor/512x512/apps/nebula-control-center.png`
-- polkit action: `/usr/share/polkit-1/actions/`
 
 These paths are conventional defaults, not a guarantee for every immutable or non-FHS distribution. Such systems may need path overrides or native packaging work.
 
@@ -195,20 +181,16 @@ Use the same Makefile path overrides during uninstall if you changed them during
 
 ## Process-termination security and limitations
 
-Normal same-user process termination follows the permissions enforced by Linux. Terminating protected processes requires `pkexec` and an active graphical polkit authentication agent provided by the desktop environment. **Do not run the entire GUI as root.** The application does not read or store the administrator password.
-
-The privileged helper uses Linux pidfd system calls when the build headers expose them, which helps avoid PID-reuse races. This normally requires Linux kernel 5.3 or newer and suitable system-call definitions in the development headers. If pidfd support is unavailable, the helper refuses the authenticated termination request rather than falling back to PID-only signaling.
-
-The helper sends `SIGTERM`; it does not guarantee that a process exits immediately or that every process can be terminated. System services may need to be managed through their service manager.
+Process termination sends `SIGTERM` directly and is limited by the permissions of the current user. It does not elevate privileges; protected processes cannot be terminated through this feature. A process may also ignore `SIGTERM` or take time to exit. System services should be managed through their service manager.
 
 ## Optional integrations and troubleshooting
 
-- **Services are missing:** NCC detects service managers and commands available on the system. Results differ between systemd, OpenRC, runit and minimal environments.
-- **Administrator termination is unavailable:** check that `pkexec` and your desktop's polkit authentication agent are installed. The privileged helper is placed in its configured system path by `sudo make install`.
+- **Services are missing:** NCC lists running services only when `systemctl` is available and returns results.
+- **A protected process cannot be terminated:** this build does not include a privileged process-termination helper. Use your system's normal administrative tools if elevated access is required.
 - **GPU details are missing:** install `pciutils` if available. Hardware and driver details vary with devices, drivers, permissions and virtualized environments.
 - **Power-profile controls are unavailable:** `powerprofilesctl`, a compatible profile and supported hardware may be required.
 - **Build fails on a new distro release:** check `pkg-config --modversion gtk4`, verify the GTK4 development package is installed, and report the distribution/release and relevant error output.
-- **CI fails:** review the corresponding GitHub Actions run. A successful build on one distro does not prove portability to all Linux environments.
+- **Build fails on a new distro release:** check `pkg-config --modversion gtk4`, verify the GTK4 development package is installed, and report the distribution/release and relevant error output.
 
 When reporting a bug, include the distribution and release, desktop environment, kernel version, whether NCC was run from the build directory or installed system-wide, and the relevant error output. Do not include passwords, access tokens or other secrets in logs.
 
@@ -218,12 +200,8 @@ When reporting a bug, include the distribution and release, desktop environment,
 src/             C sources and headers
 locales/         translations
 icons/           application icon sizes
-.github/         automated build workflow
-tests/           focused helper safety tests
-data/            polkit action template
 Makefile         build, install and uninstall rules
 install-deps.sh  package-manager-aware dependency helper
-CHANGELOG.md     version history
 ```
 
 ## Development status
