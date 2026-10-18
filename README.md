@@ -4,7 +4,7 @@
 
 Nebula Control Center (NCC) combines system monitoring, diagnostics, process management and common Linux controls in one desktop application.
 
-> **Version 2.2.0 — public preview.** NCC is built from source for the target Linux distribution. It is not a universal binary, and compatibility with every distribution, desktop environment, kernel, device or release is not guaranteed.
+> **Version 2.1.0 — public preview.** NCC is built from source for the target Linux distribution. It is not a universal binary, and compatibility with every distribution, desktop environment, kernel, device or release is not guaranteed.
 
 ## Features
 
@@ -206,7 +206,7 @@ install-deps.sh  package-manager-aware dependency helper
 
 ## Development status
 
-**Version 2.2.0 — cross-distribution public preview.** NCC is under active development. Automated builds cover selected container images; they do not cover every distribution, desktop environment, kernel or hardware configuration. Bug reports and contributions are welcome.
+**Version 2.1.0 — cross-distribution public preview.** NCC is under active development. Automated builds cover selected container images; they do not cover every distribution, desktop environment, kernel or hardware configuration. Bug reports and contributions are welcome.
 
 ## License
 
