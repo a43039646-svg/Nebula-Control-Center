@@ -144,6 +144,18 @@ nice -n 10 make -j1
 
 The current Makefile has no test target.
 
+### Native packages
+
+The repository also includes a CMake packaging build. With GTK4 development files, CMake and a C compiler installed, it creates a TGZ archive, a DEB when `dpkg-deb` is available, and an RPM when `rpmbuild` is available:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build
+cmake --build build --target package
+```
+
+Arch Linux users can build the VCS package in `packaging/arch` with `makepkg -si`.
+
 If `make` reports that GTK4 development files are missing, check:
 
 ```bash
