@@ -156,6 +156,8 @@ cmake --build build --target package
 
 Arch Linux users can build the VCS package in `packaging/arch` with `makepkg -si`.
 
+The GitHub Actions workflow **Build Linux packages** builds DEB, RPM and TGZ artifacts on pushes to `main` and can also be started manually. Download its output from the workflow run's **Artifacts** section; artifacts are retained for 30 days.
+
 If `make` reports that GTK4 development files are missing, check:
 
 ```bash
